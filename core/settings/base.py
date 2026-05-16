@@ -21,8 +21,11 @@ INSTALLED_APPS = [
     "corsheaders",
     "django_filters",
     # local
+    "apps.users",
     "apps.products",
 ]
+
+AUTH_USER_MODEL = "users.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
