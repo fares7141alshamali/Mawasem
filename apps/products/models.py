@@ -65,6 +65,13 @@ class Product(models.Model):
         _("low stock threshold"),
         default=10,
     )
+    sku = models.CharField(_("SKU"), max_length=100, unique=True, blank=True, null=True)
+    weight_value = models.DecimalField(
+        _("weight value"), max_digits=8, decimal_places=3, null=True, blank=True
+    )
+    weight_unit = models.CharField(_("weight unit"), max_length=10, blank=True, default="kg")
+    is_organic = models.BooleanField(_("organic"), default=False)
+    is_active = models.BooleanField(_("active"), default=True)
 
     class Meta:
         verbose_name = _("product")

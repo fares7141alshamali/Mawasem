@@ -32,7 +32,7 @@ class ProductAdmin(admin.ModelAdmin):
     )
     list_select_related = ("category",)
     search_fields = ("name_en", "name_ar", "slug")
-    list_filter = ("category",)
+    list_filter = ("category", "is_active", "is_organic")
     readonly_fields = ("current_price", "gross_profit", "margin", "is_in_stock", "is_low_stock")
     fieldsets = (
         (
@@ -69,6 +69,18 @@ class ProductAdmin(admin.ModelAdmin):
                     "low_stock_threshold",
                     "is_in_stock",
                     "is_low_stock",
+                )
+            },
+        ),
+        (
+            "Details",
+            {
+                "fields": (
+                    "sku",
+                    "weight_value",
+                    "weight_unit",
+                    "is_organic",
+                    "is_active",
                 )
             },
         ),

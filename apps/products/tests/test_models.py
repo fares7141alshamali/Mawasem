@@ -1,13 +1,13 @@
 from django.test import TestCase
 
-from .models import Product
+from apps.products.models import Product
 
 
 class ProductPricingTests(TestCase):
     def make_product(self, selling_price, farm_cost, discount_price=None):
         return Product(
             name_en="Test",
-            name_ar="تجربة",
+            name_ar="test-ar",
             description_en="",
             description_ar="",
             slug="test",
@@ -25,13 +25,12 @@ class ProductPricingTests(TestCase):
         assert p.current_price == 80
 
     def test_current_price_discount_higher_than_selling(self):
-        # discount أعلى من selling → يُتجاهل الخصم
         p = self.make_product(100, 60, discount_price=120)
         assert p.current_price == 100
 
     def test_margin(self):
         p = self.make_product(100, 60)
-        assert p.margin == 40.0  # (100-60)/100 * 100
+        assert p.margin == 40.0
 
     def test_is_low_stock(self):
         p = self.make_product(100, 60)
