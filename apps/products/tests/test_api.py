@@ -135,3 +135,75 @@ def test_category_query_count_is_bounded(client, django_assert_num_queries):
         response = client.get(CATEGORIES_URL)
 
     assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# 9. Price range filtering
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_filter_by_price_range(client):
+    ProductFactory.create(selling_price="5.00")
+    ProductFactory.create(selling_price="15.00")
+    ProductFactory.create(selling_price="25.00")
+
+    response = client.get(LIST_URL, {"min_price": "10", "max_price": "20"})
+
+    assert response.status_code == 200
+    prices = [p["selling_price"] for p in response.json()["results"]]
+    assert len(prices) == 1
+    assert prices[0] == "15.00"
+
+
+# ---------------------------------------------------------------------------
+# 10. Category filter — top-level slug fans out to include child products
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_category_filter_top_level_includes_children(client):
+    parent = CategoryFactory.create()
+    child = CategoryFactory.create(parent=parent)
+    unrelated = CategoryFactory.create()
+
+    in_parent = ProductFactory.create(category=parent)
+    in_child = ProductFactory.create(category=child)
+    in_other = ProductFactory.create(category=unrelated)
+
+    response = client.get(LIST_URL, {"category": parent.slug})
+
+    assert response.status_code == 200
+    slugs = {p["slug"] for p in response.json()["results"]}
+    assert in_parent.slug in slugs
+    assert in_child.slug in slugs
+    assert in_other.slug not in slugs
+
+
+# ---------------------------------------------------------------------------
+# 11. Search matches name_en and name_ar
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_search_matches_en_and_ar_names(client):
+    ProductFactory.create(name_en="Tomato", name_ar="طماطم", slug="tomato")
+    ProductFactory.create(name_en="Cucumber", name_ar="خيار", slug="cucumber")
+
+    en_response = client.get(LIST_URL, {"search": "Tomato"})
+    assert len(en_response.json()["results"]) == 1
+    assert en_response.json()["results"][0]["slug"] == "tomato"
+
+    ar_response = client.get(LIST_URL, {"search": "خيار"})
+    assert len(ar_response.json()["results"]) == 1
+    assert ar_response.json()["results"][0]["slug"] == "cucumber"
+
+
+# ---------------------------------------------------------------------------
+# 12. Ordering by selling_price ascending
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_ordering_by_selling_price_ascending(client):
+    ProductFactory.create(selling_price="30.00")
+    ProductFactory.create(selling_price="10.00")
+    ProductFactory.create(selling_price="20.00")
+
+    response = client.get(LIST_URL, {"ordering": "selling_price"})
+
+    assert response.status_code == 200
+    prices = [p["selling_price"] for p in response.json()["results"]]
+    assert prices == sorted(prices)

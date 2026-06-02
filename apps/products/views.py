@@ -1,8 +1,11 @@
 from django.db.models import Count, Prefetch, Q
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, viewsets
 from rest_framework.exceptions import NotFound
+from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import AllowAny
 
+from .filters import ProductFilterSet
 from .models import Category, Product
 from .serializers import CategorySerializer, ProductDetailSerializer, ProductListSerializer
 
@@ -25,15 +28,45 @@ class CategoryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
 
 class ProductViewSet(viewsets.ReadOnlyModelViewSet):
+    """Read-only catalog endpoint for active products.
+
+    Filtering  — via query parameters
+    ----------
+    ?min_price=<decimal>    selling_price >= value
+    ?max_price=<decimal>    selling_price <= value
+    ?category=<slug>        exact match for a subcategory; fans out to all
+                            direct children when the slug is a top-level category
+
+    Search     — ?search=<term>
+    -------
+    Matches against name_en and name_ar (case-insensitive).
+
+    Ordering   — ?ordering=<field>
+    --------
+    Allowed fields: selling_price, stock (prefix with - to reverse).
+    Default: newest first (-created_at).
+
+    Performance
+    -----------
+    The base queryset is capped at 3 DB queries (COUNT + JOIN SELECT + image
+    prefetch) regardless of page size. The ?category filter adds one extra
+    lookup to resolve the slug; all other filters are applied in-queryset.
+    """
+
     permission_classes = [AllowAny]
     lookup_field = "slug"
+    filterset_class = ProductFilterSet
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    search_fields = ["name_en", "name_ar"]
+    ordering_fields = ["selling_price", "stock"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         return (
             Product.objects.filter(is_active=True)
             .select_related("category")
             .prefetch_related("images")
-            .order_by("name_en")
+            .order_by("-created_at")
         )
 
     def get_serializer_class(self):

@@ -74,6 +74,7 @@ class Product(models.Model):
     weight_unit = models.CharField(_("weight unit"), max_length=10, blank=True, default="kg")
     is_organic = models.BooleanField(_("organic"), default=False)
     is_active = models.BooleanField(_("active"), default=True)
+    created_at = models.DateTimeField(_("created at"), auto_now_add=True)
 
     class Meta:
         verbose_name = _("product")
