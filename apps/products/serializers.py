@@ -9,6 +9,23 @@ class CategoryNestedSerializer(serializers.ModelSerializer):
         fields = ("id", "name_en", "name_ar", "slug")
 
 
+class ChildCategorySerializer(serializers.ModelSerializer):
+    product_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Category
+        fields = ("id", "slug", "name_en", "name_ar", "image", "product_count")
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    children = ChildCategorySerializer(many=True, read_only=True)
+    product_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Category
+        fields = ("id", "slug", "name_en", "name_ar", "image", "product_count", "children")
+
+
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductImage

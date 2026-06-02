@@ -6,9 +6,14 @@ from .models import Category, Product, ProductImage
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("name_en",)}
-    list_display = ("name_en", "name_ar", "parent", "slug")
+    list_display = ("name_en", "name_ar", "parent", "slug", "is_active")
     list_select_related = ("parent",)
+    list_filter = ("is_active",)
     search_fields = ("name_en", "name_ar", "slug")
+    fieldsets = (
+        (None, {"fields": ("name_en", "name_ar", "description_en", "description_ar", "slug", "parent")}),
+        ("Media & Visibility", {"fields": ("image", "is_active")}),
+    )
 
 
 class ProductImageInline(admin.TabularInline):

@@ -17,6 +17,8 @@ class Category(models.Model):
         verbose_name=_("parent category"),
     )
     slug = models.SlugField(_("slug"), unique=True, max_length=255)
+    image = models.ImageField(_("image"), upload_to="categories/", blank=True, null=True)
+    is_active = models.BooleanField(_("active"), default=True)
 
     class Meta:
         verbose_name = _("category")

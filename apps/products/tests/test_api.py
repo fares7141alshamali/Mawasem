@@ -1,8 +1,9 @@
 import pytest
 
-from apps.products.tests.factories import ProductFactory, ProductImageFactory
+from apps.products.tests.factories import CategoryFactory, ProductFactory, ProductImageFactory
 
 LIST_URL = "/api/v1/products/"
+CATEGORIES_URL = "/api/v1/categories/"
 
 
 def detail_url(slug):
@@ -83,3 +84,54 @@ def test_detail_includes_image_gallery(client):
     assert len(data["images"]) == 2
     assert data["images"][0]["sort_order"] == 1
     assert data["images"][1]["sort_order"] == 2
+
+
+# ---------------------------------------------------------------------------
+# 6. Categories: only top-level active categories are returned
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_categories_returns_only_top_level(client):
+    top = CategoryFactory.create(is_active=True, parent=None)
+    child = CategoryFactory.create(is_active=True, parent=top)
+    inactive_top = CategoryFactory.create(is_active=False, parent=None)
+
+    response = client.get(CATEGORIES_URL)
+
+    assert response.status_code == 200
+    data = response.json()
+    slugs = [c["slug"] for c in data]
+    assert top.slug in slugs
+    assert inactive_top.slug not in slugs
+    assert child.slug not in slugs
+
+
+# ---------------------------------------------------------------------------
+# 7. product_count excludes inactive products
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_product_count_excludes_inactive_products(client):
+    category = CategoryFactory.create()
+    ProductFactory.create(category=category, is_active=True)
+    ProductFactory.create(category=category, is_active=True)
+    ProductFactory.create(category=category, is_active=False)
+
+    response = client.get(CATEGORIES_URL)
+
+    assert response.status_code == 200
+    cat_data = next(c for c in response.json() if c["slug"] == category.slug)
+    assert cat_data["product_count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# 8. Category list view uses ≤ 2 queries
+# ---------------------------------------------------------------------------
+@pytest.mark.django_db
+def test_category_query_count_is_bounded(client, django_assert_num_queries):
+    top = CategoryFactory.create_batch(3)
+    for cat in top:
+        CategoryFactory.create(parent=cat)
+
+    with django_assert_num_queries(2):
+        response = client.get(CATEGORIES_URL)
+
+    assert response.status_code == 200

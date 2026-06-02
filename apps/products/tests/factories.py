@@ -12,6 +12,8 @@ class CategoryFactory(factory.django.DjangoModelFactory):
     description_en = "Test category description"
     description_ar = "category-desc-ar"
     slug = factory.Sequence(lambda n: f"category-{n}")
+    parent = None
+    is_active = True
 
 
 class ProductFactory(factory.django.DjangoModelFactory):

@@ -1,9 +1,27 @@
-from rest_framework import viewsets
+from django.db.models import Count, Prefetch, Q
+from rest_framework import mixins, viewsets
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny
 
-from .models import Product
-from .serializers import ProductDetailSerializer, ProductListSerializer
+from .models import Category, Product
+from .serializers import CategorySerializer, ProductDetailSerializer, ProductListSerializer
+
+
+class CategoryViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    permission_classes = [AllowAny]
+    pagination_class = None
+    serializer_class = CategorySerializer
+
+    def get_queryset(self):
+        children_qs = Category.objects.filter(is_active=True).annotate(
+            product_count=Count("products", filter=Q(products__is_active=True))
+        )
+        return (
+            Category.objects.filter(parent__isnull=True, is_active=True)
+            .annotate(product_count=Count("products", filter=Q(products__is_active=True)))
+            .prefetch_related(Prefetch("children", queryset=children_qs))
+            .order_by("name_en")
+        )
 
 
 class ProductViewSet(viewsets.ReadOnlyModelViewSet):
