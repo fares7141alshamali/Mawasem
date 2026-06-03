@@ -1,0 +1,36 @@
+ Build the catalog database models (Category, Product, ProductImage) in apps/products/models.py
+
+
+
+apps/products/models.py contains Category, Product, and ProductImage matching the project scaffold
+All bilingual fields are present and required: name_en, name_ar, description_en, description_ar
+Category.parent is a self-referencing FK with on_delete=SET_NULL (supports nested categories)
+Product.farm_cost is DecimalField(max_digits=10, decimal_places=2) with MinValueValidator(0) — never FloatField
+Implement these four @property methods on Product:
+
+current_price → returns discount_price if set, otherwise selling_price
+margin → returns current_price - farm_cost (internal only, never exposed in API)
+is_in_stock → returns True if stock > 0
+is_low_stock → returns True if 0 < stock <= low_stock_threshold
+
+
+ProductImage model with: product (FK), image, alt_text, sort_order
+python manage.py makemigrations produces a clean migration with no warnings
+python manage.py migrate runs without error on a fresh PostgreSQL database
+Admin: all three models registered with list_display, list_filter, search_fields, prepopulated_fields={"slug": ("name_en",)}, and ProductImage shown as TabularInline on Product
+
+Tools: VS Code, PostgreSQL running locally, Pillow (pip install Pillow), ruff (pip install ruff), DBeaver to inspect tables.
+
+For testing:
+
+Run python manage.py migrate
+Open Django shell, create a Category then a Product with that category
+Verify product.current_price, product.is_in_stock behave correctly
+Open /admin/, create another product through the UI, upload an image
+
+For completion:
+
+ruff check apps/products/ passes
+python manage.py check passes with no errors
+Admin manually tested: create category → create product → upload image
+branch name: (feature/catalog-models)

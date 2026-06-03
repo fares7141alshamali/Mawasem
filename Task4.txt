@@ -1,0 +1,51 @@
+Task 4: Build the Category API — list endpoint at /api/v1/categories/ with nested children and product counts
+ 
+One endpoint in apps/products/views.py: GET /api/v1/categories/
+ 
+Returns active top-level categories (parent IS NULL, is_active=True) with their children nested. NOT paginated — categories are bounded, the PWA loads them all at once on the home screen.
+ 
+Response shape (an array, NOT a paginated object):
+Each category includes: id, slug, name_en, name_ar, image, product_count, children (array of subcategories with the same shape)
+ 
+product_count counts ONLY active products directly in that category (NOT transitive — children's products don't add to parent count). Use Django's Count annotation with a filter:
+Count("products", filter=Q(products__is_active=True))
+ 
+Nesting is 2 levels deep: top-level + direct children. Don't recurse further (v1 catalog is shallow).
+ 
+In apps/products/serializers.py:
+CategorySerializer that nests itself for the children field — use a SerializerMethodField for `children`, or define a separate ChildCategorySerializer to avoid recursion concerns
+ 
+Query optimization is required:
+Use Prefetch with a custom inner queryset so children also get the product_count annotation:
+Prefetch("children", queryset=Category.objects.filter(is_active=True).annotate(product_count=Count("products", filter=Q(products__is_active=True))))
+Total query count ≤ 3 even with 30+ categories — verify with django_assert_num_queries in a test
+ 
+Endpoint is accessible WITHOUT authentication
+Disable pagination on this view: pagination_class = None
+ 
+URL routing:
+Add the category route to apps/products/urls.py (alongside the product viewset)
+Mounted at /api/v1/categories/
+ 
+Minimum 3 pytest tests in apps/products/tests/test_api.py:
+test_categories_returns_only_top_level (root categories at top, children appear nested under them)
+test_product_count_excludes_inactive_products
+test_query_count_is_bounded (verify ≤ 3 queries even with 30+ categories)
+ 
+Tools: VS Code, pytest + pytest-django, factory-boy, django-debug-toolbar, Bruno or Postman.
+ 
+For testing:
+Create 3 top-level categories in /admin/ (Vegetables, Fruits, Grains — with Arabic names)
+Create 2 subcategories under one of them (Vegetables → Leafy Greens, Vegetables → Roots)
+Assign a few products to each category
+Mark one product as is_active=False to test the count filter
+Run python manage.py runserver
+Open http://localhost:8000/api/v1/categories/ in browser
+Verify: 3 top-level entries, the 2 subcategories appear nested under Vegetables in the children array, product_count reflects only active products
+Run pytest — all 3 tests pass
+ 
+For completion:
+ruff check passes
+python manage.py check passes
+All tests pass
+Query count verified ≤ 3 (check with django-debug-toolbar when hitting the endpoint)

@@ -1,0 +1,28 @@
+Task 2: Build the API foundation — configure Django REST Framework and add a health check endpoint at /api/v1/health/
+
+core/settings/base.py has a REST_FRAMEWORK dict configured with: JWT as default authentication (rest_framework_simplejwt.authentication.JWTAuthentication), PageNumberPagination with PAGE_SIZE = 20, IsAuthenticatedOrReadOnly as default permission, and DjangoFilterBackend + SearchFilter + OrderingFilter as default filter backends
+CORS configured via django-cors-headers, allowing requests from localhost:3000 and localhost:5173 (the PWA dev servers)
+GET /api/v1/health/ returns 200 with body {"status": "ok", "version": "0.1.0"} and works WITHOUT authentication
+The health view lives in core/views.py using @api_view(["GET"]) and @permission_classes([AllowAny])
+core/urls.py mounts the health endpoint at /api/v1/health/
+__version__ = "0.1.0" is defined in core/__init__.py and imported by the health view (single source of truth for the API version)
+One pytest test in tests/test_health.py asserts the status code is 200 and the response body matches exactly
+
+Tools: VS Code, pytest + pytest-django (pip install pytest pytest-django), django-cors-headers (pip install django-cors-headers), httpie or curl for manual testing, Bruno or Postman to save the request as a collection.
+
+For testing:
+Run python manage.py runserver
+Open http://localhost:8000/api/v1/health/ in browser — should see the JSON response
+From terminal: curl http://localhost:8000/api/v1/health/ — same response
+Try the endpoint WITHOUT being logged in — should still return 200 (proves AllowAny is working)
+Run pytest tests/test_health.py — should pass
+
+For completion:
+ruff check passes on changed files
+python manage.py check passes with no errors
+pytest passes
+Manual curl test returns the expected JSON
+PR title: feat(api): configure DRF and add health endpoint
+branch name: (feature/drf-setup)
+
+

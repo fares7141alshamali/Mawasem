@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     # local
     "apps.users",
     "apps.products",
+    "apps.carts",
 ]
 
 AUTH_USER_MODEL = "users.User"
