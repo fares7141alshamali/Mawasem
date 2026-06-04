@@ -5,7 +5,12 @@
       "Bash(py -m pytest --tb=short)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(py manage.py check)",
+      "Bash(py manage.py makemigrations carts)",
+      "Bash(py manage.py migrate)",
+      "Bash(py -m ruff check apps/carts/)",
+      "Bash(py -m pytest apps/carts/ --tb=short -q)"
     ]
   }
 }
