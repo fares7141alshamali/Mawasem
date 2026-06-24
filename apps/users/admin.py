@@ -10,22 +10,22 @@ class UserAdmin(BaseUserAdmin):
     fieldsets = BaseUserAdmin.fieldsets + (
         (
             _("Additional Info"),
-            {"fields": ("phone_number", "address", "is_consumer")},
+            {"fields": ("role", "phone_number", "address")},
         ),
     )
     add_fieldsets = BaseUserAdmin.add_fieldsets + (
         (
             _("Additional Info"),
-            {"fields": ("phone_number", "address", "is_consumer")},
+            {"fields": ("role", "phone_number", "address")},
         ),
     )
     list_display = (
         "username",
         "email",
+        "role",
         "phone_number",
-        "is_consumer",
         "is_staff",
         "is_active",
     )
-    list_filter = ("is_consumer", "is_staff", "is_superuser", "is_active")
+    list_filter = ("role", "is_staff", "is_superuser", "is_active")
     search_fields = ("username", "email", "phone_number")

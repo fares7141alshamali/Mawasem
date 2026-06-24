@@ -20,6 +20,7 @@ INSTALLED_APPS = [
     "rest_framework",
     # local
     "apps.users",
+    "apps.farmers",
     "apps.products",
     "apps.carts",
     "apps.orders",

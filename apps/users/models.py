@@ -4,6 +4,18 @@ from django.utils.translation import gettext_lazy as _
 
 
 class User(AbstractUser):
+    class Role(models.TextChoices):
+        ADMIN    = 'admin',    _('Admin')
+        FARMER   = 'farmer',   _('Farmer')
+        CONSUMER = 'consumer', _('Consumer')
+
+    role = models.CharField(
+        _("role"),
+        max_length=10,
+        choices=Role.choices,
+        default=Role.CONSUMER,
+        db_index=True,
+    )
     phone_number = models.CharField(
         _("phone number"),
         max_length=15,
@@ -14,10 +26,6 @@ class User(AbstractUser):
         _("address"),
         blank=True,
         null=True,
-    )
-    is_consumer = models.BooleanField(
-        _("consumer"),
-        default=True,
     )
 
     class Meta:

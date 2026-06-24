@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     "django_filters",
     # local
     "apps.users",
+    "apps.farmers",
     "apps.products",
     "apps.carts",
     "apps.orders",

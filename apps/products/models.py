@@ -61,6 +61,14 @@ class Product(models.Model):
         null=True,
         blank=True,
     )
+    farmer = models.ForeignKey(
+        "farmers.Farmer",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="products",
+        verbose_name=_("farmer"),
+    )
 
     stock = models.PositiveIntegerField(_("stock"), default=0)
     low_stock_threshold = models.PositiveIntegerField(

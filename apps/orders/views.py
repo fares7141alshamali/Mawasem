@@ -7,8 +7,36 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from .models import Order, OrderItem
+from .models import Order, OrderItem, OrderStatusHistory
 from .serializers import OrderCheckoutSerializer, OrderSerializer
+
+
+def _order_queryset_with_prefetch(user) -> QuerySet[Order]:
+    """Shared queryset used by both list and the post-checkout reload.
+
+    Prefetches:
+    - ``items`` (with select_related product) — for order line items
+    - ``status_history`` ordered newest-first — for the audit log
+
+    All data for ``OrderSerializer`` is loaded in 3 queries regardless
+    of how many orders or history entries exist.
+    """
+    return (
+        Order.objects.filter(user=user)
+        .prefetch_related(
+            Prefetch(
+                "items",
+                queryset=OrderItem.objects.select_related("product"),
+            ),
+            Prefetch(
+                "status_history",
+                queryset=OrderStatusHistory.objects.select_related(
+                    "changed_by"
+                ).order_by("-changed_at"),
+            ),
+        )
+        .order_by("-created_at")
+    )
 
 
 class OrderViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
@@ -20,8 +48,8 @@ class OrderViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
     Performance
     -----------
-    ``get_queryset`` prefetches ``items → select_related(product)`` so
-    the full order list serializes without N+1 queries.
+    Both endpoints share ``_order_queryset_with_prefetch`` which loads
+    orders + items + status_history in 3 queries flat.
     """
 
     permission_classes = [IsAuthenticated]
@@ -32,17 +60,7 @@ class OrderViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         return OrderSerializer
 
     def get_queryset(self) -> QuerySet[Order]:
-        """Return only the authenticated user's orders, newest first."""
-        return (
-            Order.objects.filter(user=self.request.user)
-            .prefetch_related(
-                Prefetch(
-                    "items",
-                    queryset=OrderItem.objects.select_related("product"),
-                )
-            )
-            .order_by("-created_at")
-        )
+        return _order_queryset_with_prefetch(self.request.user)
 
     @action(detail=False, methods=["post"], url_path="checkout")
     def checkout(self, request: Request) -> Response:
@@ -50,21 +68,17 @@ class OrderViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
         Returns the newly created order (``OrderSerializer``) with HTTP 201.
         Returns HTTP 400 if the cart is empty or any product is out of stock.
+
+        The response includes ``status_history`` with the initial PENDING entry
+        that was written automatically by the ``post_save`` signal.
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         order: Order = serializer.save()
 
-        # Reload with prefetched items so the response serializer has no N+1
-        order = (
-            Order.objects.prefetch_related(
-                Prefetch(
-                    "items",
-                    queryset=OrderItem.objects.select_related("product"),
-                )
-            )
-            .get(pk=order.pk)
-        )
+        # Reload with all prefetches so the response has no N+1 and includes
+        # the status_history entry written by the post_save signal
+        order = _order_queryset_with_prefetch(request.user).get(pk=order.pk)
 
         return Response(
             OrderSerializer(order, context={"request": request}).data,

@@ -32,8 +32,17 @@ class ProductImageSerializer(serializers.ModelSerializer):
         fields = ("id", "image", "alt_text", "sort_order")
 
 
+class FarmerNestedSerializer(serializers.Serializer):
+    """Minimal farmer representation embedded in product responses."""
+
+    id = serializers.IntegerField(read_only=True)
+    farm_name = serializers.CharField(read_only=True)
+    is_verified = serializers.BooleanField(read_only=True)
+
+
 class ProductListSerializer(serializers.ModelSerializer):
     category = CategoryNestedSerializer(read_only=True)
+    farmer = FarmerNestedSerializer(read_only=True)
     current_price = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True
     )
@@ -54,6 +63,7 @@ class ProductListSerializer(serializers.ModelSerializer):
             "main_image",
             "is_in_stock",
             "category",
+            "farmer",
         )
 
     def get_main_image(self, obj):

@@ -1,7 +1,7 @@
 import pytest
 
 from apps.carts.models import CartItem
-from apps.carts.tests.factories import CartFactory, CartItemFactory
+from apps.carts.tests.factories import CartFactory, CartItemFactory, UserFactory
 from apps.orders.models import Order
 from apps.orders.tests.factories import OrderFactory
 from apps.products.tests.factories import ProductFactory
@@ -242,3 +242,157 @@ def test_order_history_after_checkout(auth_client, user):
     assert len(results) == 1
     assert results[0]["status"] == "pending"
     assert len(results[0]["items"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# 8. Status history — signal behaviour
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_initial_history_entry_written_on_order_creation(user):
+    """Every new order must have exactly one history entry: the PENDING creation."""
+    order = OrderFactory(user=user)
+
+    assert order.status_history.count() == 1
+    entry = order.status_history.first()
+    assert entry.old_status is None
+    assert entry.new_status == Order.Status.PENDING
+
+
+@pytest.mark.django_db
+def test_history_entry_written_on_status_transition(user):
+    order = OrderFactory(user=user)
+    count_before = order.status_history.count()
+
+    order.status = Order.Status.PROCESSING
+    order.save(update_fields=["status"])
+
+    assert order.status_history.count() == count_before + 1
+    latest = order.status_history.order_by("-changed_at").first()
+    assert latest.old_status == Order.Status.PENDING
+    assert latest.new_status == Order.Status.PROCESSING
+
+
+@pytest.mark.django_db
+def test_no_history_entry_when_status_unchanged(user):
+    """Saving other fields (e.g. shipping_address) must not add a history row."""
+    order = OrderFactory(user=user)
+    count_before = order.status_history.count()
+
+    order.shipping_address = "Updated street, Same City, 99999"
+    order.save(update_fields=["shipping_address"])
+
+    assert order.status_history.count() == count_before
+
+
+@pytest.mark.django_db
+def test_history_records_changed_by_and_notes(user):
+    """_changed_by and _status_notes are picked up by the signal handler."""
+    order = OrderFactory(user=user)
+    actor = UserFactory()
+
+    order._changed_by = actor
+    order._status_notes = "Handed over to the delivery company"
+    order.status = Order.Status.SHIPPED
+    order.save(update_fields=["status"])
+
+    latest = order.status_history.order_by("-changed_at").first()
+    assert latest.changed_by == actor
+    assert latest.notes == "Handed over to the delivery company"
+    assert latest.new_status == Order.Status.SHIPPED
+
+
+@pytest.mark.django_db
+def test_transient_attributes_cleaned_up_after_save(user):
+    """_changed_by and _status_notes must not linger after save()."""
+    order = OrderFactory(user=user)
+    order._changed_by = user
+    order._status_notes = "test"
+    order.status = Order.Status.PROCESSING
+    order.save(update_fields=["status"])
+
+    assert not hasattr(order, "_changed_by")
+    assert not hasattr(order, "_status_notes")
+
+
+@pytest.mark.django_db
+def test_full_transition_chain_is_recorded(user):
+    """A complete lifecycle should produce one entry per transition."""
+    order = OrderFactory(user=user)
+    transitions = [
+        Order.Status.PROCESSING,
+        Order.Status.SHIPPED,
+        Order.Status.COMPLETED,
+    ]
+    for new_status in transitions:
+        order.status = new_status
+        order.save(update_fields=["status"])
+
+    # 1 initial (PENDING) + 3 transitions = 4 entries
+    assert order.status_history.count() == 4
+    statuses = list(
+        order.status_history.order_by("changed_at").values_list("new_status", flat=True)
+    )
+    assert statuses == [
+        Order.Status.PENDING,
+        Order.Status.PROCESSING,
+        Order.Status.SHIPPED,
+        Order.Status.COMPLETED,
+    ]
+
+
+# ---------------------------------------------------------------------------
+# 9. Status history — API responses
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_checkout_response_includes_initial_status_history(auth_client, user):
+    """The 201 checkout response must already contain the PENDING history entry."""
+    cart = CartFactory(user=user)
+    CartItemFactory(cart=cart)
+
+    response = auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+
+    assert response.status_code == 201
+    history = response.json()["status_history"]
+    assert len(history) == 1
+    assert history[0]["old_status"] is None
+    assert history[0]["new_status"] == "pending"
+    assert history[0]["new_status_display"] == "Pending"
+
+
+@pytest.mark.django_db
+def test_order_list_includes_status_history_field(auth_client, user):
+    """GET /api/v1/orders/ must include status_history on every order."""
+    cart = CartFactory(user=user)
+    CartItemFactory(cart=cart)
+    auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+
+    response = auth_client.get(ORDERS_URL)
+
+    order_data = response.json()["results"][0]
+    assert "status_history" in order_data
+    assert len(order_data["status_history"]) >= 1
+
+
+@pytest.mark.django_db
+def test_status_history_newest_first_in_api(user):
+    """status_history entries must be ordered newest → oldest in the API response."""
+    order = OrderFactory(user=user)
+    order.status = Order.Status.PROCESSING
+    order.save(update_fields=["status"])
+    order.status = Order.Status.SHIPPED
+    order.save(update_fields=["status"])
+
+    from rest_framework.test import APIClient
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    response = client.get(ORDERS_URL)
+
+    history = response.json()["results"][0]["status_history"]
+    new_statuses = [h["new_status"] for h in history]
+    assert new_statuses[0] == Order.Status.SHIPPED    # newest first
+    assert new_statuses[-1] == Order.Status.PENDING   # oldest last

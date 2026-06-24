@@ -9,7 +9,52 @@ from rest_framework import serializers
 from apps.carts.models import Cart, CartItem
 from apps.products.models import Product
 
-from .models import Order, OrderItem
+from .models import Order, OrderItem, OrderStatusHistory
+
+
+# ---------------------------------------------------------------------------
+# Status history serializer
+# ---------------------------------------------------------------------------
+
+
+class OrderStatusHistorySerializer(serializers.ModelSerializer):
+    """Read-only representation of a single status transition.
+
+    Human-readable labels (``old_status_display``, ``new_status_display``)
+    are derived at serialization time from ``Order.Status.choices`` so they
+    automatically reflect any future label changes without a migration.
+    """
+
+    old_status_display = serializers.SerializerMethodField()
+    new_status_display = serializers.SerializerMethodField()
+    changed_by_username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderStatusHistory
+        fields = (
+            "id",
+            "old_status",
+            "old_status_display",
+            "new_status",
+            "new_status_display",
+            "changed_by_username",
+            "notes",
+            "changed_at",
+        )
+
+    def _status_label(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return dict(Order.Status.choices).get(value, value)
+
+    def get_old_status_display(self, obj: OrderStatusHistory) -> str | None:
+        return self._status_label(obj.old_status)
+
+    def get_new_status_display(self, obj: OrderStatusHistory) -> str:
+        return self._status_label(obj.new_status)  # type: ignore[return-value]
+
+    def get_changed_by_username(self, obj: OrderStatusHistory) -> str | None:
+        return obj.changed_by.username if obj.changed_by_id else None
 
 
 # ---------------------------------------------------------------------------
@@ -45,10 +90,23 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
-    """Full order representation including all line items."""
+    """Full order representation including line items and complete status history.
+
+    ``status_history`` is ordered newest-first (the Prefetch in
+    ``OrderViewSet.get_queryset`` enforces the ordering at the DB level so
+    this serializer adds zero extra queries).
+
+    ``customer_username`` and ``customer_phone`` expose the buyer's contact
+    details to the farmer dashboard.  They are resolved from the related
+    ``user`` row — callers must use ``select_related("user")`` on the
+    queryset to avoid N+1 queries.
+    """
 
     items = OrderItemSerializer(many=True, read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    status_history = OrderStatusHistorySerializer(many=True, read_only=True)
+    customer_username = serializers.SerializerMethodField()
+    customer_phone    = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -58,10 +116,22 @@ class OrderSerializer(serializers.ModelSerializer):
             "status_display",
             "total_price",
             "shipping_address",
+            "delivery_method",
+            "courier",
+            "tracking_number",
+            "customer_username",
+            "customer_phone",
             "items",
+            "status_history",
             "created_at",
             "updated_at",
         )
+
+    def get_customer_username(self, obj: Order) -> str:
+        return obj.user.username
+
+    def get_customer_phone(self, obj: Order) -> str | None:
+        return obj.user.phone_number or None
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +157,9 @@ class OrderCheckoutSerializer(serializers.Serializer):
        future price changes never alter the historical record.
     4. Deduct stock atomically via F() expressions.
     5. Clear the cart.
+
+    The ``post_save`` signal on ``Order`` automatically writes the initial
+    ``OrderStatusHistory`` record (PENDING) during step 3.
     """
 
     shipping_address = serializers.CharField(
@@ -163,7 +236,8 @@ class OrderCheckoutSerializer(serializers.Serializer):
                 Decimal("0.00"),
             )
 
-            # Create the order header
+            # Create the order header — the post_save signal will automatically
+            # write the initial OrderStatusHistory(old_status=None, new_status=PENDING)
             order = Order.objects.create(
                 user=user,
                 status=Order.Status.PENDING,
