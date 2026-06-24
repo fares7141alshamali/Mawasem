@@ -1,0 +1,46 @@
+Task 3: Build the Product API — read-only list and detail endpoints at /api/v1/products/
+ 
+Two endpoints in apps/products/views.py using DRF's ReadOnlyModelViewSet:
+GET /api/v1/products/ returns a paginated list of active products (is_active=True only)
+GET /api/v1/products/<slug>/ returns one product's full detail, looked up by slug (NOT by id)
+ 
+Two serializers in apps/products/serializers.py:
+ProductListSerializer (compact) — includes: id, slug, name_en, name_ar, sku, selling_price, discount_price, current_price, main_image, is_in_stock, and a nested category object with id, name_en, name_ar, slug
+ProductDetailSerializer (full) — everything from list PLUS description_en, description_ar, weight_value, weight_unit, is_organic, and an images array (all ProductImage rows for that product)
+ 
+farm_cost is NEVER in any response — verify with a test that string-searches the response body
+Inactive products (is_active=False) are excluded from list and return 404 on detail
+Unknown slug returns 404 with {"detail": "Not found."}
+Endpoint is accessible WITHOUT authentication (catalog is public)
+ 
+Query optimization is required:
+The list view uses select_related("category") and prefetch_related("images") on the queryset
+Total query count is ≤ 3 regardless of page size — verify with django_assert_num_queries(3) in a test
+ 
+URL routing:
+apps/products/urls.py uses DefaultRouter and registers the viewset
+core/urls.py includes apps.products.urls under /api/v1/products/
+ 
+Minimum 5 pytest tests in apps/products/tests/test_api.py:
+test_list_returns_only_active_products
+test_farm_cost_never_in_response (string search the response body)
+test_list_uses_3_queries_or_fewer (use django_assert_num_queries fixture)
+test_detail_returns_404_for_inactive_product
+test_detail_includes_image_gallery
+ 
+Tools: VS Code, pytest + pytest-django, factory-boy (pip install factory-boy), django-debug-toolbar (pip install django-debug-toolbar — to verify query count visually in dev), Bruno or Postman, DBeaver to inspect the SQL Django generates.
+ 
+For testing:
+Create 3-4 products in /admin/ (the admin from Task 1 works for this)
+Run python manage.py runserver
+Open http://localhost:8000/api/v1/products/ in browser — should see JSON with {count, next, previous, results}
+Open http://localhost:8000/api/v1/products/<slug>/ for one of your products — full detail
+Inspect the response body carefully — make sure "farm_cost" appears NOWHERE
+Run pytest apps/products/tests/test_api.py — all 5 tests should pass
+ 
+For completion:
+ruff check passes
+python manage.py check passes
+All 5 pytest tests pass
+Query count verified ≤ 3 (check with django-debug-toolbar when hitting the list endpoint)
+Manual API check in Bruno/Postman returns the right shape

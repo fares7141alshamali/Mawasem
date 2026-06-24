@@ -1,0 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@300;400;500;600;700&family=Noto+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Bilingual font stack — Noto Sans covers both Arabic and Latin glyphs cleanly */
+  html {
+    font-family: 'Noto Sans Arabic', 'Noto Sans', system-ui, sans-serif;
+  }
+
+  /* Smooth direction transitions when toggling RTL/LTR */
+  * {
+    transition-property: none;
+  }
+
+  /* Remove autofill background flash */
+  input:-webkit-autofill {
+    -webkit-box-shadow: 0 0 0 1000px white inset;
+  }
+}
+
+@layer utilities {
+  /* Utility to apply RTL-aware logical padding shorthand */
+  .p-inline-4 {
+    padding-inline: 1rem;
+  }
+}

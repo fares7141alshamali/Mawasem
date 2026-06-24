@@ -17,6 +17,8 @@ class Category(models.Model):
         verbose_name=_("parent category"),
     )
     slug = models.SlugField(_("slug"), unique=True, max_length=255)
+    image = models.ImageField(_("image"), upload_to="categories/", blank=True, null=True)
+    is_active = models.BooleanField(_("active"), default=True)
 
     class Meta:
         verbose_name = _("category")
@@ -59,12 +61,28 @@ class Product(models.Model):
         null=True,
         blank=True,
     )
+    farmer = models.ForeignKey(
+        "farmers.Farmer",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="products",
+        verbose_name=_("farmer"),
+    )
 
     stock = models.PositiveIntegerField(_("stock"), default=0)
     low_stock_threshold = models.PositiveIntegerField(
         _("low stock threshold"),
         default=10,
     )
+    sku = models.CharField(_("SKU"), max_length=100, unique=True, blank=True, null=True)
+    weight_value = models.DecimalField(
+        _("weight value"), max_digits=8, decimal_places=3, null=True, blank=True
+    )
+    weight_unit = models.CharField(_("weight unit"), max_length=10, blank=True, default="kg")
+    is_organic = models.BooleanField(_("organic"), default=False)
+    is_active = models.BooleanField(_("active"), default=True)
+    created_at = models.DateTimeField(_("created at"), auto_now_add=True)
 
     class Meta:
         verbose_name = _("product")

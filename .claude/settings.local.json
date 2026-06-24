@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(py -m ruff check apps/products/)",
+      "Bash(py -m pytest --tb=short)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(py manage.py check)",
+      "Bash(py manage.py makemigrations carts)",
+      "Bash(py manage.py migrate)",
+      "Bash(py -m ruff check apps/carts/)",
+      "Bash(py -m pytest apps/carts/ --tb=short -q)",
+      "Bash(py -m ruff check apps/orders/)",
+      "Bash(py manage.py makemigrations orders --name \"add_order_status_history\")",
+      "Bash(dir \"C:\\\\Users\\\\USER\\\\Desktop\\\\Mawasem\\\\apps\\\\orders\\\\tests\")",
+      "Bash(py -m pytest apps/farmers/tests/ -v)",
+      "Bash(py -m pytest --tb=short -q)",
+      "Bash(py -m ruff check apps/farmers/ apps/products/models.py)",
+      "Bash(py -m pytest apps/products/ apps/farmers/ --tb=short -q)",
+      "Bash(py -m ruff check apps/products/admin.py apps/products/serializers.py)",
+      "Bash(py -m ruff check apps/products/admin.py)",
+      "Bash(npm --version)",
+      "Bash(npm create *)",
+      "Bash(npm install *)",
+      "Bash(npx tailwindcss *)",
+      "Bash(dir \"C:\\\\Users\\\\USER\\\\Desktop\\\\Mawasem\\\\frontend\" /B)",
+      "Bash(node -e \"require\\('@tanstack/react-query'\\); require\\('axios'\\); require\\('react-router-dom'\\); console.log\\('deps OK'\\)\")",
+      "Bash(npm run *)",
+      "Bash(python -c ' *)",
+      "Bash(py -c ' *)",
+      "Bash(py manage.py check --settings=core.settings.base)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\USER\\\\Desktop\\\\Mawasem\\\\frontend\\\\src\\\\pages\\\\auth\" 2>/dev/null; echo \"ok\")",
+      "Bash(python manage.py migrate --run-syncdb)",
+      "Bash(py manage.py shell -c \"from django.urls import reverse; print\\(reverse\\('token_obtain_pair'\\)\\); print\\(reverse\\('consumer-register'\\)\\); print\\(reverse\\('farmer-register'\\)\\)\")",
+      "PowerShell(New-Item -ItemType Directory -Path \"C:\\\\Users\\\\USER\\\\Desktop\\\\Mawasem\\\\media\\\\products\" -Force)",
+      "Bash(py \"C:/Users/USER/Desktop/Mawasem/scripts/download_product_images.py\")",
+      "Bash(curl -s -L -H 'User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/124.0.0.0 Safari/537.36' -H 'Referer: https://unsplash.com/' -o tomato.jpg 'https://images.unsplash.com/photo-1546094096-0df4bcabd337?w=800&q=85&fit=crop')",
+      "Bash(node --input-type=module --eval ' *)",
+      "Bash(python manage.py migrate orders)"
+    ]
+  }
+}
