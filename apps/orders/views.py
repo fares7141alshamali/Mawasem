@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from django.db.models import Prefetch, QuerySet
+from django.db.models import Prefetch, QuerySet  # noqa: F401 – QuerySet used in type hints
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from apps.notifications.models import Notification
+
 from .models import Order, OrderItem, OrderStatusHistory
-from .serializers import OrderCheckoutSerializer, OrderSerializer
+from .serializers import ConsumerNotificationSerializer, OrderCheckoutSerializer, OrderSerializer
 
 
 def _order_queryset_with_prefetch(user) -> QuerySet[Order]:
@@ -39,11 +41,12 @@ def _order_queryset_with_prefetch(user) -> QuerySet[Order]:
     )
 
 
-class OrderViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """Order history and checkout endpoints.
 
     URL map (router registers this at ``orders/``):
-        GET  /api/v1/orders/             list()      — paginated order history
+        GET  /api/v1/orders/             list()      — order history
+        GET  /api/v1/orders/{id}/        retrieve()  — single order detail (used by tooltip)
         POST /api/v1/orders/checkout/    checkout()  — place order from cart
 
     Performance
@@ -84,3 +87,34 @@ class OrderViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             OrderSerializer(order, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class ConsumerNotificationViewSet(
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """GET  /api/v1/consumer/notifications/           — list own notifications (unread first)
+    POST /api/v1/consumer/notifications/mark-read/  — mark all as read
+
+    Security: queryset is scoped to ``request.user`` so a consumer can never
+    see another user's notifications, and farmers' NEW_ORDER notifications are
+    never in a consumer's recipient list.
+    """
+
+    permission_classes  = [IsAuthenticated]
+    serializer_class    = ConsumerNotificationSerializer
+    pagination_class    = None
+
+    def get_queryset(self) -> QuerySet:
+        return (
+            Notification.objects.filter(recipient=self.request.user)
+            .select_related("order")
+            .order_by("is_read", "-created_at")
+        )
+
+    @action(detail=False, methods=["post"], url_path="mark-read")
+    def mark_read(self, request: Request, *args, **kwargs) -> Response:
+        Notification.objects.filter(
+            recipient=request.user, is_read=False
+        ).update(is_read=True)
+        return Response({"marked_read": True})

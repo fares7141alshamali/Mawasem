@@ -7,9 +7,19 @@ from django.db.models import F, Prefetch
 from rest_framework import serializers
 
 from apps.carts.models import Cart, CartItem
+from apps.notifications.models import Notification
 from apps.products.models import Product
 
 from .models import Order, OrderItem, OrderStatusHistory
+
+
+class ConsumerNotificationSerializer(serializers.ModelSerializer):
+    """Read-only serializer for consumer (buyer) notifications."""
+
+    class Meta:
+        model  = Notification
+        fields = ("id", "kind", "title", "body", "is_read", "order_id", "created_at")
+        read_only_fields = fields
 
 
 # ---------------------------------------------------------------------------
@@ -266,5 +276,12 @@ class OrderCheckoutSerializer(serializers.Serializer):
 
             # Clear the cart so the user starts fresh
             cart.items.all().delete()
+
+            # Notify farmers about the new order (after bulk_create so items exist)
+            try:
+                from apps.orders.signals import _notify_farmers_new_order
+                _notify_farmers_new_order(order)
+            except Exception:
+                pass
 
         return order

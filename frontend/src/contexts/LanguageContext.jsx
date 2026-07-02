@@ -126,6 +126,17 @@ const translations = {
     courierName: 'Courier Name',
     trackingNum: 'Tracking Number',
     confirmShipped: 'Confirm Shipped',
+    // Notifications
+    notifications: 'Notifications',
+    noNotifications: 'No notifications yet',
+    markAllRead: 'Mark all as read',
+    // Orders page
+    myOrders: 'My Orders',
+    orderHistory: 'Order History',
+    noOrdersYet: "You haven't placed any orders yet.",
+    orderPreview: 'Order Preview',
+    deliveryAddress: 'Delivery Address',
+    statusHistory: 'Status History',
   },
   ar: {
     appName: 'مواسم',
@@ -251,6 +262,17 @@ const translations = {
     courierName: 'اسم المندوب',
     trackingNum: 'رقم التتبع',
     confirmShipped: 'تأكيد الشحن',
+    // Notifications
+    notifications: 'الإشعارات',
+    noNotifications: 'لا توجد إشعارات بعد',
+    markAllRead: 'تحديد الكل كمقروء',
+    // Orders page
+    myOrders: 'طلباتي',
+    orderHistory: 'سجل الطلبات',
+    noOrdersYet: 'لم تُقدِّم أي طلب حتى الآن.',
+    orderPreview: 'معاينة الطلب',
+    deliveryAddress: 'عنوان التوصيل',
+    statusHistory: 'سجل الحالات',
   },
 };
 
