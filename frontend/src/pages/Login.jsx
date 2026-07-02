@@ -207,6 +207,11 @@ export default function Login() {
           {/* Footer links */}
           <div className="mt-6 space-y-2 text-center text-sm text-gray-400">
             <p>
+              <Link to="/forgot-password" className="font-medium text-green-600 transition hover:text-green-700">
+                {ar ? 'نسيت كلمة المرور؟' : 'Forgot your password?'}
+              </Link>
+            </p>
+            <p>
               {ar ? 'ليس لديك حساب؟ ' : "Don't have an account? "}
               <Link to="/signup" className="font-medium text-green-600 transition hover:text-green-700">
                 {ar ? 'إنشاء حساب' : 'Sign up'}

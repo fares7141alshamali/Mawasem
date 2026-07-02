@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import axios from 'axios';
 
-import { useAuth } from '../../contexts/AuthContext';
 import { useLang } from '../../contexts/LanguageContext';
 import { JORDAN_CITIES } from '../../constants/jordanCities';
 
@@ -129,17 +128,15 @@ function PasswordInput({ id, label, value, onChange, placeholder, autoComplete, 
 
 // ─── ConsumerForm ─────────────────────────────────────────────────────────────
 function ConsumerForm({ ar, onBack }) {
-  const { login }  = useAuth();
-  const navigate   = useNavigate();
-
   const [form, setForm] = useState({ username: '', email: '', password: '', password2: '', phone_number: '' });
   const [error, setError] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
 
   const inputCls = 'w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-green-400 focus:bg-white focus:ring-2 focus:ring-green-100';
 
   const { mutate, isPending } = useMutation({
     mutationFn: (data) => axios.post(CONSUMER_URL, data).then((r) => r.data),
-    onSuccess: (tokens) => { login(tokens); navigate('/', { replace: true }); },
+    onSuccess: () => setEmailSent(true),
     onError: (err) => {
       const d = err.response?.data ?? {};
       setError(
@@ -162,6 +159,28 @@ function ConsumerForm({ ar, onBack }) {
       return;
     }
     mutate(form);
+  }
+
+  if (emailSent) {
+    return (
+      <div className="rounded-xl bg-green-50 px-5 py-8 text-center">
+        <span className="text-4xl">📬</span>
+        <p className="mt-3 text-sm font-semibold text-green-800">
+          {ar ? 'تحقق من بريدك الإلكتروني' : 'Check your inbox'}
+        </p>
+        <p className="mt-2 text-xs text-green-700 leading-relaxed">
+          {ar
+            ? `أرسلنا رابط التحقق إلى ${form.email}. انقر فوق الرابط لتفعيل حسابك.`
+            : `We sent a verification link to ${form.email}. Click it to activate your account.`}
+        </p>
+        <Link
+          to="/login"
+          className="mt-5 inline-block text-sm font-medium text-green-600 hover:text-green-700"
+        >
+          {ar ? 'العودة لتسجيل الدخول' : 'Back to sign in'}
+        </Link>
+      </div>
+    );
   }
 
   return (
@@ -232,20 +251,18 @@ function ConsumerForm({ ar, onBack }) {
 
 // ─── FarmerForm ───────────────────────────────────────────────────────────────
 function FarmerForm({ ar, onBack }) {
-  const { login }  = useAuth();
-  const navigate   = useNavigate();
-
   const [form, setForm] = useState({
     username: '', email: '', password: '', password2: '',
     phone_number: '', farm_name: '', city: '', bio: '',
   });
-  const [error, setError] = useState('');
+  const [error, setError]       = useState('');
+  const [emailSent, setEmailSent] = useState(false);
 
   const inputCls = 'w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-green-400 focus:bg-white focus:ring-2 focus:ring-green-100';
 
   const { mutate, isPending } = useMutation({
     mutationFn: (data) => axios.post(FARMER_URL, data).then((r) => r.data),
-    onSuccess: (tokens) => { login(tokens); navigate('/farmer/dashboard', { replace: true }); },
+    onSuccess: () => setEmailSent(true),
     onError: (err) => {
       const d = err.response?.data ?? {};
       setError(
@@ -271,6 +288,28 @@ function FarmerForm({ ar, onBack }) {
   }
 
   const labelCls = 'mb-1.5 block text-sm font-medium text-gray-700';
+
+  if (emailSent) {
+    return (
+      <div className="rounded-xl bg-green-50 px-5 py-8 text-center">
+        <span className="text-4xl">📬</span>
+        <p className="mt-3 text-sm font-semibold text-green-800">
+          {ar ? 'تحقق من بريدك الإلكتروني' : 'Check your inbox'}
+        </p>
+        <p className="mt-2 text-xs text-green-700 leading-relaxed">
+          {ar
+            ? `أرسلنا رابط التحقق إلى ${form.email}. انقر فوق الرابط لتفعيل حسابك.`
+            : `We sent a verification link to ${form.email}. Click it to activate your account.`}
+        </p>
+        <Link
+          to="/login"
+          className="mt-5 inline-block text-sm font-medium text-green-600 hover:text-green-700"
+        >
+          {ar ? 'العودة لتسجيل الدخول' : 'Back to sign in'}
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-4">

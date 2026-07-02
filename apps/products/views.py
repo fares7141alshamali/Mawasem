@@ -1,9 +1,10 @@
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Case, Count, F, Prefetch, Q, When
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import mixins, viewsets
+from rest_framework import generics, mixins, viewsets
 from rest_framework.exceptions import NotFound
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
 
 from .filters import ProductFilterSet
 from .models import Category, Product
@@ -83,3 +84,48 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
             raise NotFound()
         self.check_object_permissions(self.request, instance)
         return instance
+
+
+class PriceComparisonView(generics.ListAPIView):
+    """GET /api/v1/products/compare/?q=<term>
+
+    Returns all active, in-stock products whose name matches the search term,
+    sorted cheapest-first by effective price (discount_price when valid,
+    otherwise selling_price).  No pagination — the response is always a plain
+    array so the frontend can render a simple side-by-side table.
+    """
+
+    permission_classes = [AllowAny]
+    serializer_class   = ProductListSerializer
+    pagination_class   = None
+
+    def get_queryset(self):
+        q = self.request.query_params.get("q", "").strip()
+        if not q:
+            return Product.objects.none()
+
+        effective_price = Case(
+            When(
+                discount_price__isnull=False,
+                discount_price__lt=F("selling_price"),
+                then=F("discount_price"),
+            ),
+            default=F("selling_price"),
+        )
+
+        return (
+            Product.objects.filter(is_active=True, stock__gt=0)
+            .filter(Q(name_en__icontains=q) | Q(name_ar__icontains=q))
+            .select_related("category", "farmer")
+            .prefetch_related("images")
+            .annotate(effective_price=effective_price)
+            .order_by("effective_price")
+        )
+
+    def list(self, request, *args, **kwargs):
+        if not request.query_params.get("q", "").strip():
+            return Response(
+                {"detail": "Query parameter 'q' is required."},
+                status=400,
+            )
+        return super().list(request, *args, **kwargs)

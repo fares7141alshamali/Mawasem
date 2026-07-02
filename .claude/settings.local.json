@@ -37,7 +37,13 @@
       "Bash(py \"C:/Users/USER/Desktop/Mawasem/scripts/download_product_images.py\")",
       "Bash(curl -s -L -H 'User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/124.0.0.0 Safari/537.36' -H 'Referer: https://unsplash.com/' -o tomato.jpg 'https://images.unsplash.com/photo-1546094096-0df4bcabd337?w=800&q=85&fit=crop')",
       "Bash(node --input-type=module --eval ' *)",
-      "Bash(python manage.py migrate orders)"
+      "Bash(python manage.py migrate orders)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Edit",
+      "Write",
+      "Bash(*)",
+      "PowerShell(*)"
     ]
   }
 }

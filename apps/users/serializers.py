@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
@@ -58,7 +63,7 @@ class ConsumerRegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data: dict):
         password = validated_data.pop('password')
-        user = User(role=User.Role.CONSUMER, **validated_data)
+        user = User(role=User.Role.CONSUMER, is_active=False, **validated_data)
         user.set_password(password)
         user.save()
         return user
@@ -115,7 +120,12 @@ class FarmerRegisterSerializer(serializers.Serializer):
         password     = validated_data.pop('password')
         # remaining: username, email
 
-        user = User(role=User.Role.FARMER, phone_number=phone_number or None, **validated_data)
+        user = User(
+            role=User.Role.FARMER,
+            is_active=False,
+            phone_number=phone_number or None,
+            **validated_data,
+        )
         user.set_password(password)
         user.save()
 
@@ -128,4 +138,92 @@ class FarmerRegisterSerializer(serializers.Serializer):
             location_lat=location_lat,
             location_lng=location_lng,
         )
+        return user
+
+
+# ---------------------------------------------------------------------------
+# Email verification
+# ---------------------------------------------------------------------------
+
+
+class VerifyEmailSerializer(serializers.Serializer):
+    uid   = serializers.CharField()
+    token = serializers.CharField()
+
+    def validate(self, attrs: dict) -> dict:
+        try:
+            pk   = force_str(urlsafe_base64_decode(attrs['uid']))
+            user = User.objects.get(pk=pk)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            raise serializers.ValidationError({'uid': 'Invalid verification link.'})
+
+        if user.is_email_verified:
+            raise serializers.ValidationError({'detail': 'This email has already been verified.'})
+
+        if not default_token_generator.check_token(user, attrs['token']):
+            raise serializers.ValidationError({'token': 'Invalid or expired verification link.'})
+
+        attrs['user'] = user
+        return attrs
+
+    def save(self) -> User:
+        user: User = self.validated_data['user']
+        user.is_email_verified = True
+        user.is_active = True
+        user.save(update_fields=['is_email_verified', 'is_active'])
+        return user
+
+
+# ---------------------------------------------------------------------------
+# Password reset — request
+# ---------------------------------------------------------------------------
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def save(self) -> None:
+        from apps.users.utils import send_password_reset_email
+        try:
+            user = User.objects.get(
+                email__iexact=self.validated_data['email'],
+                is_active=True,
+            )
+        except User.DoesNotExist:
+            return  # silently succeed — prevents email enumeration
+        send_password_reset_email(user)
+
+
+# ---------------------------------------------------------------------------
+# Password reset — confirm
+# ---------------------------------------------------------------------------
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uid          = serializers.CharField()
+    token        = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate(self, attrs: dict) -> dict:
+        try:
+            pk   = force_str(urlsafe_base64_decode(attrs['uid']))
+            user = User.objects.get(pk=pk, is_active=True)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            raise serializers.ValidationError({'uid': 'Invalid or expired reset link.'})
+
+        if not default_token_generator.check_token(user, attrs['token']):
+            raise serializers.ValidationError({'token': 'Invalid or expired reset link.'})
+
+        try:
+            validate_password(attrs['new_password'], user)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({'new_password': list(exc.messages)})
+
+        attrs['user'] = user
+        return attrs
+
+    def save(self) -> User:
+        user: User = self.validated_data['user']
+        user.set_password(self.validated_data['new_password'])
+        user.save(update_fields=['password'])
         return user

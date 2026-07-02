@@ -20,6 +20,7 @@ from .serializers import (
     FarmerProductReadSerializer,
     FarmerProductWriteSerializer,
     FarmerSerializer,
+    NotificationSerializer,
 )
 
 
@@ -244,3 +245,24 @@ class FarmerOrderViewSet(
         # Reload with prefetches so the response has no N+1
         order = self.get_queryset().get(pk=order.pk)
         return Response(OrderSerializer(order, context={"request": request}).data)
+
+
+class FarmerNotificationViewSet(
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    """GET  /api/v1/farmer/notifications/           — list (unread first)
+    POST /api/v1/farmer/notifications/mark-read/  — mark all read
+    """
+
+    permission_classes = [IsAuthenticated, IsFarmerUser]
+    serializer_class   = NotificationSerializer
+    pagination_class   = None
+
+    def get_queryset(self):
+        return self.request.user.notifications.all().order_by("is_read", "-created_at")
+
+    @action(detail=False, methods=["post"], url_path="mark-read")
+    def mark_read(self, request: Request, *args, **kwargs) -> Response:
+        self.request.user.notifications.filter(is_read=False).update(is_read=True)
+        return Response({"marked_read": True})

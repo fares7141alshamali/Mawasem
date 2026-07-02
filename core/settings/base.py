@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "apps.products",
     "apps.carts",
     "apps.orders",
+    "apps.notifications",
 ]
 
 AUTH_USER_MODEL = "users.User"
@@ -129,3 +130,10 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:5173",
 ]
+
+# ---------------------------------------------------------------------------
+# Email — console backend prints to terminal in development
+# ---------------------------------------------------------------------------
+EMAIL_BACKEND      = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = "Mawasem <noreply@mawasem.local>"
+FRONTEND_URL       = os.environ.get("FRONTEND_URL", "http://localhost:5173")

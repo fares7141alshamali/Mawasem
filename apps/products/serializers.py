@@ -37,6 +37,7 @@ class FarmerNestedSerializer(serializers.Serializer):
 
     id = serializers.IntegerField(read_only=True)
     farm_name = serializers.CharField(read_only=True)
+    city = serializers.CharField(read_only=True)
     is_verified = serializers.BooleanField(read_only=True)
 
 

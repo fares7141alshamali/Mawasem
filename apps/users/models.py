@@ -27,6 +27,10 @@ class User(AbstractUser):
         blank=True,
         null=True,
     )
+    is_email_verified = models.BooleanField(
+        _("email verified"),
+        default=False,
+    )
 
     class Meta:
         verbose_name = _("user")

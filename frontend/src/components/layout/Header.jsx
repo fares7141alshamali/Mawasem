@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLang } from '../../contexts/LanguageContext';
 import { useCartCount } from '../../api/hooks/useCart';
 import { useLogout } from '../../hooks/useLogout';
+import NotificationBell from './NotificationBell';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 function CartIcon({ className }) {
@@ -147,6 +148,9 @@ export default function Header() {
         {/* Nav links — hidden on mobile */}
         <nav className="hidden items-center gap-1.5 md:flex">
           <NavLink to="/" end className={navLinkClass}>{t.home}</NavLink>
+          {isAuthenticated && !isFarmer && (
+            <NavLink to="/orders" className={navLinkClass}>{t.myOrders}</NavLink>
+          )}
           {isFarmer && (
             <NavLink
               to="/farmer/dashboard"
@@ -178,6 +182,9 @@ export default function Header() {
 
               {/* Cart — badge updates optimistically on add/remove */}
               <CartButton t={t} />
+
+              {/* Notification bell — role-aware: farmer vs consumer endpoint */}
+              <NotificationBell />
 
               {/* Logout — clears cache + redirects */}
               <LogoutButton t={t} />

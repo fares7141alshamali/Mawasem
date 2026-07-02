@@ -54,6 +54,77 @@ from apps.products.models import Product
 
 from .models import Order, OrderItem, OrderStatusHistory
 
+# Human-readable messages sent to the buyer on each status transition.
+_STATUS_MESSAGES = {
+    Order.Status.PROCESSING: (
+        "Order #{id} is being processed",
+        "Your order is now being prepared by the farmer.",
+    ),
+    Order.Status.SHIPPED: (
+        "Order #{id} has been shipped",
+        "Your order is on its way!",
+    ),
+    Order.Status.COMPLETED: (
+        "Order #{id} completed",
+        "Your order has been delivered. Thank you!",
+    ),
+    Order.Status.CANCELLED: (
+        "Order #{id} was cancelled",
+        "Your order has been cancelled.",
+    ),
+}
+
+
+def _notify_order_status(order: Order) -> None:
+    """Create a buyer notification for the new order status.
+
+    Imported lazily to avoid a circular import between orders ↔ notifications.
+    Wrapped in try/except so a DB hiccup never rolls back the status update.
+    """
+    template = _STATUS_MESSAGES.get(order.status)
+    if template is None:
+        return
+    try:
+        from apps.notifications.models import Notification
+
+        title_tpl, body = template
+        Notification.objects.create(
+            recipient=order.user,
+            kind=Notification.Kind.ORDER_STATUS,
+            title=title_tpl.format(id=order.pk),
+            body=body,
+            order=order,
+        )
+    except Exception:
+        pass  # never block a status update due to a notification failure
+
+
+def _notify_farmers_new_order(order: Order) -> None:
+    """Create a NEW_ORDER notification for each farmer with items in this order.
+
+    Must be called AFTER OrderItem bulk_create so the items exist in the DB.
+    Wrapped in try/except so a failure never rolls back the checkout transaction.
+    """
+    try:
+        from apps.notifications.models import Notification
+
+        farmer_user_ids = list(
+            OrderItem.objects.filter(order=order)
+            .values_list("product__farmer__user_id", flat=True)
+            .distinct()
+        )
+        for uid in farmer_user_ids:
+            if uid:
+                Notification.objects.create(
+                    recipient_id=uid,
+                    kind=Notification.Kind.NEW_ORDER,
+                    title=f"New order #{order.pk}",
+                    body=f"A new order (#{order.pk}) was placed by {order.user.username}.",
+                    order=order,
+                )
+    except Exception:
+        pass
+
 
 @receiver(pre_save, sender=Order)
 def order_pre_save(sender, instance: Order, **kwargs) -> None:
@@ -92,6 +163,11 @@ def order_post_save(sender, instance: Order, created: bool, **kwargs) -> None:
             changed_by=changed_by,
             notes=notes,
         )
+
+    # Notify the buyer whenever the status changes (skip the initial creation
+    # since "pending" is implicit and needs no notification).
+    if status_changed:
+        _notify_order_status(instance)
 
     # Restore stock for each item when an order is cancelled.
     # Guard: only fire on a genuine transition *to* cancelled so that
