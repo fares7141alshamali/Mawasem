@@ -151,6 +151,9 @@ export default function Header() {
           {isAuthenticated && !isFarmer && (
             <NavLink to="/orders" className={navLinkClass}>{t.myOrders}</NavLink>
           )}
+          {isAuthenticated && !isFarmer && (
+            <NavLink to="/addresses" className={navLinkClass}>{t.addressBook}</NavLink>
+          )}
           {isFarmer && (
             <NavLink
               to="/farmer/dashboard"

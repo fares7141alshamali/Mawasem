@@ -1,5 +1,7 @@
 import pytest
 
+from apps.addresses.models import Address
+from apps.addresses.tests.factories import AddressFactory
 from apps.carts.models import CartItem
 from apps.carts.tests.factories import CartFactory, CartItemFactory, UserFactory
 from apps.orders.models import Order
@@ -10,6 +12,13 @@ CHECKOUT_URL = "/api/v1/orders/checkout/"
 ORDERS_URL = "/api/v1/orders/"
 
 SHIPPING = "456 Farm Road, Amman, Jordan 11118"
+SHIPPING_LAT = "31.963158"
+SHIPPING_LNG = "35.930359"
+CHECKOUT_PAYLOAD = {
+    "shipping_address": SHIPPING,
+    "latitude": SHIPPING_LAT,
+    "longitude": SHIPPING_LNG,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +47,7 @@ def test_checkout_creates_order_from_cart(auth_client, user):
     product = ProductFactory(selling_price="20.00", discount_price=None, stock=50)
     CartItemFactory(cart=cart, product=product, quantity=3)
 
-    response = auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    response = auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
 
     assert response.status_code == 201
     data = response.json()
@@ -56,7 +65,7 @@ def test_checkout_uses_discount_price_when_lower(auth_client, user):
     product = ProductFactory(selling_price="30.00", discount_price="18.00", stock=10)
     CartItemFactory(cart=cart, product=product, quantity=2)
 
-    response = auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    response = auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
 
     assert response.status_code == 201
     data = response.json()
@@ -72,7 +81,7 @@ def test_checkout_multi_item_cart(auth_client, user):
     CartItemFactory(cart=cart, product=product_a, quantity=4)
     CartItemFactory(cart=cart, product=product_b, quantity=2)
 
-    response = auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    response = auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
 
     assert response.status_code == 201
     data = response.json()
@@ -91,7 +100,7 @@ def test_checkout_deducts_stock(auth_client, user):
     product = ProductFactory(stock=50)
     CartItemFactory(cart=cart, product=product, quantity=7)
 
-    auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
 
     product.refresh_from_db()
     assert product.stock == 43
@@ -103,7 +112,7 @@ def test_checkout_insufficient_stock_returns_400(auth_client, user):
     product = ProductFactory(stock=3)
     CartItemFactory(cart=cart, product=product, quantity=5)
 
-    response = auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    response = auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
 
     assert response.status_code == 400
     assert Order.objects.count() == 0  # transaction was rolled back
@@ -116,7 +125,7 @@ def test_checkout_exact_stock_succeeds(auth_client, user):
     product = ProductFactory(stock=5)
     CartItemFactory(cart=cart, product=product, quantity=5)
 
-    response = auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    response = auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
 
     assert response.status_code == 201
     product.refresh_from_db()
@@ -133,7 +142,7 @@ def test_checkout_clears_cart(auth_client, user):
     cart = CartFactory(user=user)
     CartItemFactory.create_batch(3, cart=cart)
 
-    auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
 
     assert not CartItem.objects.filter(cart=cart).exists()
 
@@ -145,7 +154,7 @@ def test_failed_checkout_does_not_clear_cart(auth_client, user):
     product = ProductFactory(stock=0)
     CartItemFactory(cart=cart, product=product, quantity=1)
 
-    auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
 
     assert CartItem.objects.filter(cart=cart).exists()
 
@@ -157,14 +166,14 @@ def test_failed_checkout_does_not_clear_cart(auth_client, user):
 
 @pytest.mark.django_db
 def test_checkout_empty_cart_returns_400(auth_client):
-    response = auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    response = auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
     assert response.status_code == 400
 
 
 @pytest.mark.django_db
 def test_checkout_no_cart_at_all_returns_400(auth_client):
     """User has never had a cart — must still return 400, not 500."""
-    response = auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    response = auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
     assert response.status_code == 400
 
 
@@ -176,7 +185,101 @@ def test_checkout_missing_shipping_address_returns_400(auth_client, user):
     response = auth_client.post(CHECKOUT_URL, {})
 
     assert response.status_code == 400
-    assert "shipping_address" in response.json()
+    assert "non_field_errors" in response.json()
+
+
+# ---------------------------------------------------------------------------
+# 5b. Checkout — saved address / inline location
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_checkout_with_address_id_snapshots_coordinates(auth_client, user):
+    cart = CartFactory(user=user)
+    CartItemFactory(cart=cart)
+    address = AddressFactory(user=user)
+
+    response = auth_client.post(CHECKOUT_URL, {"address_id": address.id}, format="json")
+
+    assert response.status_code == 201, response.data
+    data = response.json()
+    assert data["shipping_address"] == address.full_address
+    assert data["shipping_lat"] == str(address.latitude)
+    assert data["shipping_lng"] == str(address.longitude)
+
+    order = Order.objects.get(pk=data["id"])
+    assert str(order.shipping_lat) == str(address.latitude)
+    assert str(order.shipping_lng) == str(address.longitude)
+
+
+@pytest.mark.django_db
+def test_checkout_with_other_users_address_id_returns_400(auth_client, user, other_user):
+    cart = CartFactory(user=user)
+    CartItemFactory(cart=cart)
+    foreign_address = AddressFactory(user=other_user)
+
+    response = auth_client.post(CHECKOUT_URL, {"address_id": foreign_address.id}, format="json")
+
+    assert response.status_code == 400
+    assert "address_id" in response.json()
+    assert Order.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_checkout_inline_location_without_saving(auth_client, user):
+    cart = CartFactory(user=user)
+    CartItemFactory(cart=cart)
+
+    response = auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD, format="json")
+
+    assert response.status_code == 201, response.data
+    data = response.json()
+    assert data["shipping_lat"] == SHIPPING_LAT
+    assert data["shipping_lng"] == SHIPPING_LNG
+    assert Address.objects.filter(user=user).count() == 0
+
+
+@pytest.mark.django_db
+def test_checkout_inline_location_with_save_address_creates_address(auth_client, user):
+    cart = CartFactory(user=user)
+    CartItemFactory(cart=cart)
+
+    payload = dict(CHECKOUT_PAYLOAD, save_address=True, label="work")
+    response = auth_client.post(CHECKOUT_URL, payload, format="json")
+
+    assert response.status_code == 201, response.data
+    assert Address.objects.filter(user=user).count() == 1
+    saved = Address.objects.get(user=user)
+    assert saved.label == "work"
+    assert str(saved.latitude) == SHIPPING_LAT
+    assert saved.is_default is True  # auto-promoted as the user's first address
+
+
+@pytest.mark.django_db
+def test_checkout_rejects_both_address_id_and_inline(auth_client, user):
+    cart = CartFactory(user=user)
+    CartItemFactory(cart=cart)
+    address = AddressFactory(user=user)
+
+    payload = dict(CHECKOUT_PAYLOAD, address_id=address.id)
+    response = auth_client.post(CHECKOUT_URL, payload, format="json")
+
+    assert response.status_code == 400
+    assert "non_field_errors" in response.json()
+
+
+@pytest.mark.django_db
+def test_orders_without_coordinates_serialize_with_null_lat_lng(auth_client, user):
+    """Regression: pre-existing orders (OrderFactory sets no lat/lng) must
+    still serialize cleanly with nullable coordinate fields."""
+    OrderFactory(user=user)
+
+    response = auth_client.get(ORDERS_URL)
+
+    assert response.status_code == 200
+    order_data = response.json()["results"][0]
+    assert order_data["shipping_lat"] is None
+    assert order_data["shipping_lng"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +294,7 @@ def test_order_item_price_is_frozen_at_checkout(auth_client, user):
     product = ProductFactory(selling_price="20.00", discount_price=None, stock=10)
     CartItemFactory(cart=cart, product=product, quantity=1)
 
-    auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
 
     # Simulate a price change after the order was placed
     product.selling_price = "99.00"
@@ -234,7 +337,7 @@ def test_order_history_after_checkout(auth_client, user):
     cart = CartFactory(user=user)
     CartItemFactory(cart=cart)
 
-    auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
 
     response = auth_client.get(ORDERS_URL)
     assert response.status_code == 200
@@ -353,7 +456,7 @@ def test_checkout_response_includes_initial_status_history(auth_client, user):
     cart = CartFactory(user=user)
     CartItemFactory(cart=cart)
 
-    response = auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    response = auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
 
     assert response.status_code == 201
     history = response.json()["status_history"]
@@ -368,7 +471,7 @@ def test_order_list_includes_status_history_field(auth_client, user):
     """GET /api/v1/orders/ must include status_history on every order."""
     cart = CartFactory(user=user)
     CartItemFactory(cart=cart)
-    auth_client.post(CHECKOUT_URL, {"shipping_address": SHIPPING})
+    auth_client.post(CHECKOUT_URL, CHECKOUT_PAYLOAD)
 
     response = auth_client.get(ORDERS_URL)
 

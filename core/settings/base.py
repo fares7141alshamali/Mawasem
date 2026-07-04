@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "apps.farmers",
     "apps.products",
     "apps.carts",
+    "apps.addresses",
     "apps.orders",
     "apps.notifications",
 ]

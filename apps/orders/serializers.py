@@ -6,6 +6,7 @@ from django.db import connection, transaction
 from django.db.models import F, Prefetch
 from rest_framework import serializers
 
+from apps.addresses.models import Address
 from apps.carts.models import Cart, CartItem
 from apps.notifications.models import Notification
 from apps.products.models import Product
@@ -126,6 +127,9 @@ class OrderSerializer(serializers.ModelSerializer):
             "status_display",
             "total_price",
             "shipping_address",
+            "shipping_lat",
+            "shipping_lng",
+            "shipping_label",
             "delivery_method",
             "courier",
             "tracking_number",
@@ -152,6 +156,19 @@ class OrderSerializer(serializers.ModelSerializer):
 class OrderCheckoutSerializer(serializers.Serializer):
     """Converts the current user's cart into a confirmed order.
 
+    Delivery location — provide exactly ONE of:
+    - ``address_id``: one of the requesting user's own saved addresses.
+    - Inline: ``shipping_address`` + ``latitude`` + ``longitude`` (optionally
+      with ``save_address=True`` and ``label`` to also save it to the address
+      book for later reuse).
+
+    Regardless of path, the created ``Order`` snapshots ``shipping_address``,
+    ``shipping_lat``/``shipping_lng``, and ``shipping_label`` as plain
+    columns rather than a live FK to ``Address`` — mirroring how
+    ``OrderItem.price`` snapshots the unit price so historical orders stay
+    accurate even if the source record (a saved address, a product) is later
+    edited or deleted.
+
     Validation
     ----------
     - Cart must exist and contain at least one item.
@@ -167,18 +184,83 @@ class OrderCheckoutSerializer(serializers.Serializer):
        future price changes never alter the historical record.
     4. Deduct stock atomically via F() expressions.
     5. Clear the cart.
+    6. If the inline path was used with ``save_address=True``, persist a new
+       ``Address`` for the user now that checkout has succeeded.
 
     The ``post_save`` signal on ``Order`` automatically writes the initial
     ``OrderStatusHistory`` record (PENDING) during step 3.
     """
 
+    address_id = serializers.PrimaryKeyRelatedField(
+        queryset=Address.objects.none(),  # scoped to the requester in __init__
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
     shipping_address = serializers.CharField(
         min_length=10,
+        required=False,
         error_messages={"min_length": "Please provide a complete shipping address."},
     )
+    latitude = serializers.DecimalField(
+        max_digits=9, decimal_places=6, required=False, allow_null=True
+    )
+    longitude = serializers.DecimalField(
+        max_digits=9, decimal_places=6, required=False, allow_null=True
+    )
+    save_address = serializers.BooleanField(required=False, default=False, write_only=True)
+    label = serializers.ChoiceField(
+        choices=Address.Label.choices,
+        required=False,
+        default=Address.Label.HOME,
+        write_only=True,
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Scope address_id's valid choices to the requesting user so a
+        # foreign address ID simply fails to resolve (400 via
+        # PrimaryKeyRelatedField's own DoesNotExist -> ValidationError)
+        # instead of ever loading another user's row.
+        request = self.context.get("request")
+        if request is not None and request.user.is_authenticated:
+            self.fields["address_id"].queryset = Address.objects.filter(user=request.user)
 
     def validate(self, attrs: dict) -> dict:
         user = self.context["request"].user
+
+        address = attrs.get("address_id")
+        inline_fields = ("shipping_address", "latitude", "longitude")
+        has_inline = any(attrs.get(f) not in (None, "") for f in inline_fields)
+
+        if address and has_inline:
+            raise serializers.ValidationError(
+                {"non_field_errors": ["Provide either address_id or an inline shipping address, not both."]}
+            )
+        if not address and not has_inline:
+            raise serializers.ValidationError(
+                {"non_field_errors": ["Provide address_id or a complete inline shipping address."]}
+            )
+
+        if address:
+            attrs["shipping_address"] = address.full_address
+            attrs["latitude"] = address.latitude
+            attrs["longitude"] = address.longitude
+            attrs["shipping_label_display"] = address.get_label_display()
+        else:
+            missing = [f for f in inline_fields if attrs.get(f) in (None, "")]
+            if missing:
+                raise serializers.ValidationError(
+                    {f: "This field is required." for f in missing}
+                )
+            lat, lng = attrs["latitude"], attrs["longitude"]
+            if not (-90 <= lat <= 90):
+                raise serializers.ValidationError({"latitude": "Must be between -90 and 90."})
+            if not (-180 <= lng <= 180):
+                raise serializers.ValidationError({"longitude": "Must be between -180 and 180."})
+            attrs["shipping_label_display"] = dict(Address.Label.choices).get(
+                attrs.get("label", Address.Label.HOME), ""
+            )
 
         try:
             cart = Cart.objects.prefetch_related(
@@ -214,6 +296,12 @@ class OrderCheckoutSerializer(serializers.Serializer):
         cart: Cart = validated_data.pop("cart")
         cart_items: list[CartItem] = validated_data.pop("cart_items")
         shipping_address: str = validated_data["shipping_address"]
+        shipping_lat = validated_data.get("latitude")
+        shipping_lng = validated_data.get("longitude")
+        shipping_label: str = validated_data.get("shipping_label_display", "")
+        save_address: bool = validated_data.pop("save_address", False)
+        address: Address | None = validated_data.get("address_id")
+        raw_label = validated_data.get("label", Address.Label.HOME)
         user = self.context["request"].user
 
         with transaction.atomic():
@@ -253,6 +341,9 @@ class OrderCheckoutSerializer(serializers.Serializer):
                 status=Order.Status.PENDING,
                 total_price=total,
                 shipping_address=shipping_address,
+                shipping_lat=shipping_lat,
+                shipping_lng=shipping_lng,
+                shipping_label=shipping_label,
             )
 
             # Snapshot cart items into immutable order item rows
@@ -276,6 +367,18 @@ class OrderCheckoutSerializer(serializers.Serializer):
 
             # Clear the cart so the user starts fresh
             cart.items.all().delete()
+
+            # Inline location the user opted to save — only persisted once
+            # checkout has actually succeeded, so a failed checkout never
+            # leaves an orphaned address behind.
+            if save_address and address is None:
+                Address.objects.create(
+                    user=user,
+                    label=raw_label,
+                    full_address=shipping_address,
+                    latitude=shipping_lat,
+                    longitude=shipping_lng,
+                )
 
             # Notify farmers about the new order (after bulk_create so items exist)
             try:
