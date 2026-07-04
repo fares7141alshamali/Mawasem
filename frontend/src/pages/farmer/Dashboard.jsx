@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLang } from '../../contexts/LanguageContext';
@@ -13,6 +13,9 @@ import {
   useUpdateProduct,
 } from '../../api/hooks/useFarmer';
 import { JORDAN_CITIES } from '../../constants/jordanCities';
+import DeliveryPinThumbnail from '../../components/map/DeliveryPinThumbnail';
+
+const FullMapModal = lazy(() => import('../../components/map/FullMapModal'));
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STATUS_BADGE = {
@@ -372,7 +375,7 @@ function fmtDate(iso, lang) {
 }
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
-function OrderCard({ order, t, lang }) {
+function OrderCard({ order, t, lang, onExpandMap }) {
   const itemSummary =
     order.items
       .slice(0, 2)
@@ -421,13 +424,13 @@ function OrderCard({ order, t, lang }) {
         )}
       </div>
 
-      {/* ── Full delivery address (no truncation) ── */}
-      <div className="mb-3 flex gap-1.5">
-        <span className="mt-0.5 shrink-0 text-xs" aria-hidden="true">📍</span>
-        <p className="break-words text-xs leading-relaxed text-gray-400">
-          {order.shipping_address}
-        </p>
-      </div>
+      {/* ── Delivery location ── */}
+      <DeliveryPinThumbnail
+        lat={order.shipping_lat}
+        lng={order.shipping_lng}
+        address={order.shipping_address}
+        onExpand={onExpandMap}
+      />
 
       {/* ── Order total ── */}
       <p className="mb-3 text-sm font-semibold text-gray-800 tabular-nums">
@@ -909,6 +912,7 @@ export default function Dashboard() {
 
   const [showModal,   setShowModal]   = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [mapModal,    setMapModal]    = useState(null); // { lat, lng, address } | null
 
   // ── Operational stats (derived from cache — no extra fetch) ──────────────
   const activeCount  = products.filter((p) => p.is_active).length;
@@ -1075,7 +1079,7 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-3">
               {sortedOrders.map((o) => (
-                <OrderCard key={o.id} order={o} t={t} lang={lang} />
+                <OrderCard key={o.id} order={o} t={t} lang={lang} onExpandMap={setMapModal} />
               ))}
             </div>
           )}
@@ -1086,6 +1090,16 @@ export default function Dashboard() {
       {/* Modals */}
       {showModal && (
         <AddProductModal onClose={() => setShowModal(false)} t={t} lang={lang} />
+      )}
+      {mapModal && (
+        <Suspense fallback={null}>
+          <FullMapModal
+            lat={mapModal.lat}
+            lng={mapModal.lng}
+            address={mapModal.address}
+            onClose={() => setMapModal(null)}
+          />
+        </Suspense>
       )}
       {showProfile && (
         <ProfileModal

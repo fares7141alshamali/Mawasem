@@ -7,6 +7,7 @@ import Cart from './pages/Cart';
 import ProductDetail from './pages/ProductDetail';
 import Dashboard, { FarmerGuard } from './pages/farmer/Dashboard';
 import Orders from './pages/Orders';
+import Addresses from './pages/Addresses';
 import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="/products/:slug" element={<ProductDetail />} />
         <Route path="/cart"           element={<Cart />} />
         <Route path="/orders"         element={<Orders />} />
+        <Route path="/addresses"      element={<Addresses />} />
 
         {/* /farmers is the farmer portal login; /login is the shared auth entry */}
         <Route path="/farmer/dashboard" element={

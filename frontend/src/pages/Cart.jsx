@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -8,8 +8,11 @@ import {
   useClearCart,
   cartKeys,
 } from '../api/hooks/useCart';
+import { useAddresses, addressKeys } from '../api/hooks/useAddresses';
 import { useLang } from '../contexts/LanguageContext';
 import apiClient from '../api/client';
+
+const LocationPicker = lazy(() => import('../components/map/LocationPicker'));
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 function TrashIcon({ className }) {
@@ -173,23 +176,38 @@ export default function Cart() {
   const { lang, t } = useLang();
   const qc = useQueryClient();
 
-  const [address, setAddress]           = useState('');
-  const [addressError, setAddressError] = useState('');
-  const [checkoutError, setCheckoutError] = useState('');
+  const { data: addresses = [] } = useAddresses();
+
+  const [selectedAddressId, setSelectedAddressId] = useState(null); // number | 'new' | null
+  const [newLocation, setNewLocation]       = useState(null); // { latitude, longitude, address }
+  const [newLabel, setNewLabel]             = useState('home');
+  const [saveNewAddress, setSaveNewAddress] = useState(true);
+  const [showPicker, setShowPicker]         = useState(false);
+  const [addressError, setAddressError]     = useState('');
+  const [checkoutError, setCheckoutError]   = useState('');
   const [confirmedOrder, setConfirmedOrder] = useState(null);
 
+  // Derived, not stored: defaults to the user's default/first saved address
+  // until they explicitly pick something else via the radio cards below.
+  const defaultAddressId = (addresses.find((a) => a.is_default) ?? addresses[0])?.id ?? null;
+  const effectiveAddressId = selectedAddressId ?? defaultAddressId;
+
   const checkout = useMutation({
-    mutationFn: (shipping_address) =>
-      apiClient.post('/orders/checkout/', { shipping_address }).then((r) => r.data),
+    mutationFn: (payload) =>
+      apiClient.post('/orders/checkout/', payload).then((r) => r.data),
     onSuccess: (order) => {
       qc.invalidateQueries({ queryKey: cartKeys.all });
+      qc.invalidateQueries({ queryKey: addressKeys.list() }); // save_address may have created one
       setConfirmedOrder(order);
     },
     onError: (err) => {
       const data = err.response?.data;
       const msg =
         data?.non_field_errors?.[0] ??
+        data?.address_id?.[0] ??
         data?.shipping_address?.[0] ??
+        data?.latitude?.[0] ??
+        data?.longitude?.[0] ??
         data?.detail ??
         t.checkoutError;
       setCheckoutError(msg);
@@ -200,11 +218,24 @@ export default function Cart() {
     e.preventDefault();
     setCheckoutError('');
     setAddressError('');
-    if (address.trim().length < 10) {
-      setAddressError(t.addressTooShort);
-      return;
+
+    if (effectiveAddressId === 'new') {
+      if (!newLocation) {
+        setAddressError(t.pinLocationRequired);
+        return;
+      }
+      checkout.mutate({
+        shipping_address: newLocation.address,
+        latitude: newLocation.latitude,
+        longitude: newLocation.longitude,
+        save_address: saveNewAddress,
+        label: newLabel,
+      });
+    } else if (effectiveAddressId) {
+      checkout.mutate({ address_id: effectiveAddressId });
+    } else {
+      setAddressError(t.selectDeliveryAddress);
     }
-    checkout.mutate(address.trim());
   }
 
   if (confirmedOrder) return <OrderSuccess order={confirmedOrder} t={t} />;
@@ -282,22 +313,91 @@ export default function Cart() {
           <hr className="my-4 border-gray-100" />
 
           <form onSubmit={handleCheckout} className="space-y-3">
-            <label className="block">
+            <div className="space-y-2">
               <span className="mb-1 block text-xs font-medium text-gray-600">
-                {t.shippingAddress}
+                {t.selectDeliveryAddress}
               </span>
-              <textarea
-                value={address}
-                onChange={(e) => { setAddress(e.target.value); setAddressError(''); }}
-                placeholder={t.shippingAddressPlaceholder}
-                rows={3}
-                dir="auto"
-                className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 outline-none transition focus:border-green-400 focus:ring-2 focus:ring-green-100"
-              />
-              {addressError && (
-                <p className="mt-1 text-xs text-red-500">{addressError}</p>
+
+              {addresses.map((addr) => (
+                <label
+                  key={addr.id}
+                  className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-sm transition ${
+                    effectiveAddressId === addr.id ? 'border-green-400 bg-green-50/50' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="delivery_address"
+                    className="mt-0.5 accent-green-600"
+                    checked={effectiveAddressId === addr.id}
+                    onChange={() => { setSelectedAddressId(addr.id); setAddressError(''); }}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5 font-medium text-gray-800">
+                      {t[`addressLabel_${addr.label}`] ?? addr.label}
+                      {addr.is_default && (
+                        <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
+                          {t.defaultAddress}
+                        </span>
+                      )}
+                    </span>
+                    <span className="block truncate text-xs text-gray-500" dir="auto">
+                      {addr.full_address}
+                    </span>
+                  </span>
+                </label>
+              ))}
+
+              <label
+                className={`flex cursor-pointer items-center gap-2.5 rounded-lg border p-3 text-sm transition ${
+                  effectiveAddressId === 'new' ? 'border-green-400 bg-green-50/50' : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="delivery_address"
+                  className="accent-green-600"
+                  checked={effectiveAddressId === 'new'}
+                  onChange={() => { setSelectedAddressId('new'); setAddressError(''); setShowPicker(true); }}
+                />
+                <span className="font-medium text-gray-700">+ {t.addNewAddressOption}</span>
+              </label>
+
+              {effectiveAddressId === 'new' && newLocation && (
+                <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
+                  <p className="truncate" dir="auto">{newLocation.address}</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowPicker(true)}
+                    className="mt-1 font-medium text-green-700 hover:underline"
+                  >
+                    {t.editOnMap}
+                  </button>
+                  <label className="mt-2 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={saveNewAddress}
+                      onChange={(e) => setSaveNewAddress(e.target.checked)}
+                      className="accent-green-600"
+                    />
+                    {t.saveAddressForLater}
+                  </label>
+                  {saveNewAddress && (
+                    <select
+                      value={newLabel}
+                      onChange={(e) => setNewLabel(e.target.value)}
+                      className="mt-2 rounded-lg border border-gray-200 px-2 py-1 text-xs"
+                    >
+                      <option value="home">{t.addressLabel_home}</option>
+                      <option value="work">{t.addressLabel_work}</option>
+                      <option value="other">{t.addressLabel_other}</option>
+                    </select>
+                  )}
+                </div>
               )}
-            </label>
+
+              {addressError && <p className="text-xs text-red-500">{addressError}</p>}
+            </div>
 
             {checkoutError && (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
@@ -316,6 +416,21 @@ export default function Cart() {
         </div>
 
       </div>
+
+      {showPicker && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-10 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
+            <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-gray-100 sm:h-96" />}>
+              <LocationPicker
+                initialLat={newLocation?.latitude}
+                initialLng={newLocation?.longitude}
+                onConfirm={(loc) => { setNewLocation(loc); setShowPicker(false); }}
+                onCancel={() => setShowPicker(false)}
+              />
+            </Suspense>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

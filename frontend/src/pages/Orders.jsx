@@ -1,7 +1,11 @@
+import { lazy, Suspense, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useLang } from '../contexts/LanguageContext';
 import { useOrders } from '../api/hooks/useOrders';
+import DeliveryPinThumbnail from '../components/map/DeliveryPinThumbnail';
+
+const FullMapModal = lazy(() => import('../components/map/FullMapModal'));
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -24,7 +28,7 @@ function StatusBadge({ status, label }) {
 
 // ─── OrderCard ────────────────────────────────────────────────────────────────
 
-function OrderCard({ order, lang, t }) {
+function OrderCard({ order, lang, t, onExpandMap }) {
   const date = new Date(order.created_at).toLocaleDateString(
     lang === 'ar' ? 'ar-EG' : 'en-GB',
     { year: 'numeric', month: 'short', day: 'numeric' },
@@ -59,13 +63,18 @@ function OrderCard({ order, lang, t }) {
       </ul>
 
       {/* Footer */}
-      <div className="mt-4 flex items-center justify-between border-t border-gray-50 pt-3">
-        <span className="text-xs text-gray-400 truncate max-w-[60%]">
-          {order.shipping_address}
-        </span>
-        <span className="text-sm font-bold text-green-700">
-          {Number(order.total_price).toFixed(2)} {lang === 'ar' ? 'د.أ' : 'JOD'}
-        </span>
+      <div className="mt-4 border-t border-gray-50 pt-3">
+        <DeliveryPinThumbnail
+          lat={order.shipping_lat}
+          lng={order.shipping_lng}
+          address={order.shipping_address}
+          onExpand={onExpandMap}
+        />
+        <div className="flex items-center justify-end">
+          <span className="text-sm font-bold text-green-700">
+            {Number(order.total_price).toFixed(2)} {lang === 'ar' ? 'د.أ' : 'JOD'}
+          </span>
+        </div>
       </div>
     </article>
   );
@@ -77,6 +86,7 @@ export default function Orders() {
   const { isAuthenticated } = useAuth();
   const { t, lang }         = useLang();
   const { data: orders = [], isLoading, isError } = useOrders();
+  const [mapModal, setMapModal] = useState(null); // { lat, lng, address } | null
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
@@ -108,9 +118,20 @@ export default function Orders() {
       {!isLoading && !isError && orders.length > 0 && (
         <div className="space-y-4">
           {orders.map((order) => (
-            <OrderCard key={order.id} order={order} lang={lang} t={t} />
+            <OrderCard key={order.id} order={order} lang={lang} t={t} onExpandMap={setMapModal} />
           ))}
         </div>
+      )}
+
+      {mapModal && (
+        <Suspense fallback={null}>
+          <FullMapModal
+            lat={mapModal.lat}
+            lng={mapModal.lng}
+            address={mapModal.address}
+            onClose={() => setMapModal(null)}
+          />
+        </Suspense>
       )}
     </main>
   );

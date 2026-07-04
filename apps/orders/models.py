@@ -44,6 +44,28 @@ class Order(models.Model):
         PARTNER = "partner", _("Delivery Partner")
 
     shipping_address = models.TextField(_("shipping address"))
+    shipping_lat = models.DecimalField(
+        _("shipping latitude"),
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text=_("GPS latitude captured at checkout time (e.g. 31.963158)."),
+    )
+    shipping_lng = models.DecimalField(
+        _("shipping longitude"),
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True,
+        help_text=_("GPS longitude captured at checkout time (e.g. 35.930359)."),
+    )
+    shipping_label = models.CharField(
+        _("delivery address label"),
+        max_length=50,
+        blank=True,
+        help_text=_("e.g. 'Home', 'Work', or a custom label — denormalized at checkout."),
+    )
     delivery_method = models.CharField(
         _("delivery method"),
         max_length=10,
