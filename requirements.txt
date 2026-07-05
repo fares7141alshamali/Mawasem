@@ -7,3 +7,9 @@ Pillow==12.3.0
 pytest==9.1.1
 pytest-django==4.12.0
 factory_boy==3.3.3
+
+# Deployment (production web server, static files, Postgres)
+gunicorn==23.0.0
+whitenoise==6.11.0
+dj-database-url==3.0.1
+psycopg2-binary==2.9.10
