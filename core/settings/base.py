@@ -14,6 +14,15 @@ if render_host := os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
 if DEBUG:
     ALLOWED_HOSTS += ["localhost", "127.0.0.1"]
 
+# Render terminates TLS at the edge and proxies to this app over plain HTTP,
+# so trust the header it sets to tell Django the original request was HTTPS
+# (needed for correct CSRF/cookie behaviour and to avoid a redirect loop).
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+CSRF_TRUSTED_ORIGINS = [o for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o]
+if render_host:
+    CSRF_TRUSTED_ORIGINS.append(f"https://{render_host}")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -155,3 +164,15 @@ CORS_ALLOWED_ORIGINS = [
 EMAIL_BACKEND      = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = "Mawasem <noreply@mawasem.local>"
 FRONTEND_URL       = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+
+# ---------------------------------------------------------------------------
+# Production hardening — only enforced when DEBUG is off, so local dev over
+# plain http:// is unaffected. Combined with SECURE_PROXY_SSL_HEADER above,
+# this is safe behind Render's proxy (no redirect loop).
+# ---------------------------------------------------------------------------
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 7  # 1 week; raise once confident nothing breaks
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True

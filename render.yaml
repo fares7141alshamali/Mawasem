@@ -26,3 +26,8 @@ services:
         value: ""
       - key: FRONTEND_URL
         value: ""
+      # Only needed if the backend is served on a custom domain (e.g.
+      # api.mawsemjo.com) — the *.onrender.com hostname is trusted
+      # automatically. Comma-separated, e.g. https://api.mawsemjo.com.
+      - key: CSRF_TRUSTED_ORIGINS
+        value: ""

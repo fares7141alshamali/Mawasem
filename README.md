@@ -111,6 +111,27 @@ npm run lint
 npm run build
 ```
 
+## Deployment
+
+The backend deploys to [Render](https://render.com) and the frontend to [Vercel](https://vercel.com).
+
+### Backend (Render)
+
+1. Push this repo to GitHub, then in Render click **New > Blueprint** and point it at the repo — it reads `render.yaml` and provisions the web service plus a free Postgres database automatically (`SECRET_KEY` is generated for you, `DATABASE_URL` is wired up from the linked database).
+2. Once deployed, note the service URL (e.g. `https://mawasem-backend.onrender.com`) — `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` already trust it automatically via the `RENDER_EXTERNAL_HOSTNAME` variable Render injects.
+3. After the frontend is deployed (below), come back and fill in the `CORS_ALLOWED_ORIGINS` and `FRONTEND_URL` env vars on the Render service with the Vercel URL, then redeploy.
+4. If you later put the backend behind a custom domain instead of `*.onrender.com`, also set `CSRF_TRUSTED_ORIGINS` (comma-separated `https://` origins) — otherwise admin/session login will fail CSRF checks on that domain.
+
+### Frontend (Vercel)
+
+1. Import the repo in Vercel, set the project root to `frontend/`.
+2. Add environment variables:
+   ```
+   VITE_API_BASE_URL=https://mawasem-backend.onrender.com/api/v1/
+   VITE_MAPBOX_ACCESS_TOKEN=pk.your_mapbox_public_token_here
+   ```
+3. Deploy. `frontend/vercel.json` is already set up to rewrite client-side routes (e.g. `/addresses`) to `index.html` so page refreshes don't 404.
+
 ## Project structure
 
 ```
